@@ -1,20 +1,19 @@
 blueprint:
-  name: ZHA - Moes Smart Knob for lights
-  description: 'Control lights with a Moes Smart Knob.
+  name: Zigbee2MQTT - Moes Smart Knob for lights
+  description: 'Control lights with a Moes Smart Knob using Zigbee2MQTT.
     You can set functions for a single press. This allows you to assign, e.g., a scene
     or anything else.
     Rotating left/right will change the brightness smoothly of the selected light.
     Not all functionality of the device is available at time of writing, e.g. double
-    press, long press and press and rotate.
-    Original blueprint by seamus65 (https://gist.github.com/seamus65/939a147634942dd885c8704334627f93).
-    Improved by GonzaloAlbito (https://gist.github.com/gonzaloalbito/3dc06702e941e08298ea9bfade731731).
-    Version 2022-11-15.
-    Edited by Gordio'
+    press, long press and press and rotate.'
   domain: automation
   input:
     remote:
       name: Remote
       description: Moes Knob to use
+      selector:
+        device:
+          integration: mqtt
     light:
       name: Light(s)
       description: The light(s) to control
@@ -61,4 +60,56 @@ blueprint:
       default: []
       selector:
         action: {}
-  source_url: https://gist.github.com/gonzaloal
+
+trigger:
+- platform: mqtt
+  topic: 'zigbee2mqtt/your_remote_topic'  # Replace with your Zigbee2MQTT topic for the remote
+action:
+- variables:
+    command: '{{ trigger.payload_json.action }}'
+    mode: '{{ trigger.payload_json.mode }}'
+    steps: '{{ trigger.payload_json.steps }}'
+    step_percent: !input step_percent
+    press_step_percent: !input press_step_percent
+- choose:
+  - conditions:
+    - '{{ command == ''single'' }}'
+    sequence: !input single_press
+  - conditions:
+    - '{{ command == ''long'' }}'
+    sequence: !input long_press
+  - conditions:
+    - '{{ command == ''rotate'' }}'
+    - '{{ mode == ''clockwise'' }}'
+    sequence:
+    - service: light.turn_on
+      target: !input light
+      data_template:
+        brightness_step_pct: '{{ step_percent * steps }}'
+        transition: 0.5
+    - wait_for_trigger:
+        platform: mqtt
+        topic: 'zigbee2mqtt/your_rotate_stop_topic'  # Replace with your Zigbee2MQTT topic for rotate stop
+  - conditions:
+    - '{{ command == ''rotate'' }}'
+    - '{{ mode == ''anticlockwise'' }}'
+    sequence:
+    - service: light.turn_on
+      target: !input light
+      data_template:
+        brightness_step_pct: '-{{ step_percent * steps }}'
+        transition: 0.5
+    - wait_for_trigger:
+        platform: mqtt
+        topic: 'zigbee2mqtt/your_rotate_stop_topic'  # Replace with your Zigbee2MQTT topic for rotate stop
+  - conditions:
+    - '{{ command == ''press'' }}'
+    sequence:
+    - service: light.turn_on
+      target: !input press_light
+      data_template:
+        brightness_step_pct: '{{ press_step_percent * steps }}'
+        transition: 0.5
+    - wait_for_trigger:
+        platform: mqtt
+        topic: 'zigbee2mqtt/your_press_stop_topic'  # Replace with your Zigbee2MQTT topic for press stop
